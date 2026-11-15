@@ -1,37 +1,57 @@
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-import logging
+from app.api.v1.tasks import router as tasks_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.repositories.task_repository import InMemoryTaskRepository
 
-
-setup_logging()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="TaskFlow API",
-    description="A task management REST API built with FastAPI",
-    version="1.0.0",
-    debug=settings.DEBUG,
-)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
 
-@app.on_event("startup")
-async def startup_event():
-     logger.info(
+    app.state.task_repository = InMemoryTaskRepository()
+
+    logger.info(
         "Starting %s in %s mode",
         settings.APP_NAME,
         settings.ENVIRONMENT,
     )
 
+    yield
 
-@app.get("/health")
-async def health_check():
+    logger.info("Shutting down %s", settings.APP_NAME)
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
+    debug=settings.DEBUG,
+    lifespan=lifespan,
+)
+
+
+app.include_router(
+    tasks_router,
+    prefix="/api/v1",
+)
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    logger.info("Health check requested")
+
     return {
         "status": "healthy",
         "application": settings.APP_NAME,
         "version": settings.APP_VERSION,
-        "environment": settings.ENVIRONMENT
+        "environment": settings.ENVIRONMENT,
     }
